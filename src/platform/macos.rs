@@ -1,4 +1,6 @@
+#[cfg(target_os = "macos")]
 use crate::error::{Error, Result};
+#[cfg(target_os = "macos")]
 use crate::types::UriScheme;
 
 #[cfg(target_os = "macos")]
