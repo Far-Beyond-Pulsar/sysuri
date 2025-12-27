@@ -184,19 +184,3 @@ pub fn is_registered(scheme: &str) -> Result<bool> {
     let handler = String::from_utf8_lossy(&output.stdout);
     Ok(!handler.trim().is_empty())
 }
-
-// Stub implementations for non-Linux platforms
-#[cfg(not(target_os = "linux"))]
-pub fn register(_scheme: &UriScheme) -> Result<()> {
-    Err(Error::UnsupportedPlatform)
-}
-
-#[cfg(not(target_os = "linux"))]
-pub fn unregister(_scheme: &str) -> Result<()> {
-    Err(Error::UnsupportedPlatform)
-}
-
-#[cfg(not(target_os = "linux"))]
-pub fn is_registered(_scheme: &str) -> Result<bool> {
-    Err(Error::UnsupportedPlatform)
-}

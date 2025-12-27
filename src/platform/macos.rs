@@ -170,19 +170,3 @@ pub fn is_registered(scheme: &str) -> Result<bool> {
 
     Ok(output.status.success())
 }
-
-// Stub implementations for non-macOS platforms
-#[cfg(not(target_os = "macos"))]
-pub fn register(_scheme: &UriScheme) -> Result<()> {
-    Err(Error::UnsupportedPlatform)
-}
-
-#[cfg(not(target_os = "macos"))]
-pub fn unregister(_scheme: &str) -> Result<()> {
-    Err(Error::UnsupportedPlatform)
-}
-
-#[cfg(not(target_os = "macos"))]
-pub fn is_registered(_scheme: &str) -> Result<bool> {
-    Err(Error::UnsupportedPlatform)
-}

@@ -97,19 +97,3 @@ pub fn is_registered(scheme: &str) -> Result<bool> {
     let hkcr = RegKey::predef(HKEY_CLASSES_ROOT);
     Ok(hkcr.open_subkey(scheme).is_ok())
 }
-
-// Stub implementations for non-Windows platforms
-#[cfg(not(windows))]
-pub fn register(_scheme: &UriScheme) -> Result<()> {
-    Err(Error::UnsupportedPlatform)
-}
-
-#[cfg(not(windows))]
-pub fn unregister(_scheme: &str) -> Result<()> {
-    Err(Error::UnsupportedPlatform)
-}
-
-#[cfg(not(windows))]
-pub fn is_registered(_scheme: &str) -> Result<bool> {
-    Err(Error::UnsupportedPlatform)
-}
