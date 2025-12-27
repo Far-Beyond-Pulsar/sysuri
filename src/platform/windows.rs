@@ -1,4 +1,6 @@
+#[cfg(windows)]
 use crate::error::{Error, Result};
+#[cfg(windows)]
 use crate::types::UriScheme;
 
 #[cfg(windows)]
