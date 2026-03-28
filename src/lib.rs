@@ -199,9 +199,14 @@ pub fn handle_uri(uri: &str) -> Result<()> {
 /// This is a convenience function that looks through command-line arguments
 /// for something that looks like a custom URI scheme.
 ///
+/// Supports both hierarchical URIs (with "://") and non-hierarchical URIs:
+/// - `myapp://path` (hierarchical)
+/// - `tel:+1-816-555-1212` (non-hierarchical)
+/// - `mailto:user@example.com` (non-hierarchical)
+///
 /// # Returns
 ///
-/// Returns the first argument that contains "://" or `None` if no URI is found.
+/// Returns the first argument that looks like a valid URI or `None` if no URI is found.
 ///
 /// # Example
 ///
@@ -215,18 +220,61 @@ pub fn handle_uri(uri: &str) -> Result<()> {
 pub fn parse_args() -> Option<String> {
     std::env::args()
         .skip(1)
-        .find(|arg| arg.contains("://"))
+        .find(|arg| is_valid_uri(arg))
+}
+
+/// Check if a string looks like a valid URI
+///
+/// A valid URI has the format `scheme:rest` where scheme:
+/// - Starts with a letter
+/// - Contains only letters, digits, +, -, or .
+///
+/// This function validates basic URI syntax without full RFC 3986 compliance.
+fn is_valid_uri(s: &str) -> bool {
+    if let Some(colon_pos) = s.find(':') {
+        if colon_pos == 0 {
+            return false; // Empty scheme
+        }
+
+        let scheme = &s[..colon_pos];
+
+        // Check if it's a Windows path (e.g., "C:\path")
+        #[cfg(windows)]
+        {
+            if scheme.len() == 1 && scheme.chars().next().unwrap().is_ascii_alphabetic() {
+                // Single letter followed by colon is likely a Windows drive letter
+                if s.len() > colon_pos + 1 && (s.chars().nth(colon_pos + 1) == Some('\\') || s.chars().nth(colon_pos + 1) == Some('/')) {
+                    return false;
+                }
+            }
+        }
+
+        // Validate scheme according to RFC 3986
+        let mut chars = scheme.chars();
+        if let Some(first) = chars.next() {
+            if !first.is_ascii_alphabetic() {
+                return false;
+            }
+            return chars.all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '-' || c == '.');
+        }
+    }
+    false
 }
 
 /// Extract the scheme from a URI
 ///
+/// Supports both hierarchical and non-hierarchical URIs:
+/// - `myapp://action` → `Some("myapp")`
+/// - `tel:+1-816-555-1212` → `Some("tel")`
+/// - `mailto:user@example.com` → `Some("mailto")`
+///
 /// # Arguments
 ///
-/// * `uri` - The full URI (e.g., "myapp://action")
+/// * `uri` - The full URI
 ///
 /// # Returns
 ///
-/// Returns the scheme part (e.g., "myapp") or `None` if the URI is invalid.
+/// Returns the scheme part or `None` if the URI is invalid.
 ///
 /// # Example
 ///
@@ -234,13 +282,38 @@ pub fn parse_args() -> Option<String> {
 /// use sysuri::extract_scheme;
 ///
 /// assert_eq!(extract_scheme("myapp://test"), Some("myapp"));
+/// assert_eq!(extract_scheme("tel:+1234"), Some("tel"));
 /// assert_eq!(extract_scheme("invalid"), None);
 /// ```
 pub fn extract_scheme(uri: &str) -> Option<&str> {
-    if !uri.contains("://") {
-        return None;
+    if let Some(colon_pos) = uri.find(':') {
+        if colon_pos == 0 {
+            return None;
+        }
+
+        let scheme = &uri[..colon_pos];
+
+        // Check if it's a Windows path (e.g., "C:\path")
+        #[cfg(windows)]
+        {
+            if scheme.len() == 1 && scheme.chars().next().unwrap().is_ascii_alphabetic() {
+                // Single letter followed by colon is likely a Windows drive letter
+                if uri.len() > colon_pos + 1 && (uri.chars().nth(colon_pos + 1) == Some('\\') || uri.chars().nth(colon_pos + 1) == Some('/')) {
+                    return None;
+                }
+            }
+        }
+
+        // Validate scheme format (must start with letter, contain only alphanumeric/+/-/.)
+        let mut chars = scheme.chars();
+        if let Some(first) = chars.next() {
+            if first.is_ascii_alphabetic() &&
+               chars.all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '-' || c == '.') {
+                return Some(scheme);
+            }
+        }
     }
-    uri.split("://").next().filter(|s| !s.is_empty())
+    None
 }
 
 /// Check if the application should run in URI handler mode
@@ -297,10 +370,52 @@ mod tests {
 
     #[test]
     fn test_extract_scheme() {
+        // Hierarchical URIs
         assert_eq!(extract_scheme("myapp://test"), Some("myapp"));
         assert_eq!(extract_scheme("http://example.com"), Some("http"));
+
+        // Non-hierarchical URIs
+        assert_eq!(extract_scheme("tel:+1-816-555-1212"), Some("tel"));
+        assert_eq!(extract_scheme("mailto:user@example.com"), Some("mailto"));
+        assert_eq!(extract_scheme("sms:+1234567890"), Some("sms"));
+
+        // Invalid URIs
         assert_eq!(extract_scheme("invalid"), None);
         assert_eq!(extract_scheme("://invalid"), None);
+        assert_eq!(extract_scheme(":nospace"), None);
+
+        // Windows paths should not be detected as URIs on Windows
+        #[cfg(windows)]
+        {
+            assert_eq!(extract_scheme("C:\\path\\to\\file"), None);
+            assert_eq!(extract_scheme("D:/path/to/file"), None);
+        }
+    }
+
+    #[test]
+    fn test_is_valid_uri() {
+        // Valid hierarchical URIs
+        assert!(is_valid_uri("myapp://test"));
+        assert!(is_valid_uri("http://example.com"));
+        assert!(is_valid_uri("custom-app://data"));
+
+        // Valid non-hierarchical URIs
+        assert!(is_valid_uri("tel:+1-816-555-1212"));
+        assert!(is_valid_uri("mailto:user@example.com"));
+        assert!(is_valid_uri("sms:+1234567890"));
+
+        // Invalid URIs
+        assert!(!is_valid_uri("invalid"));
+        assert!(!is_valid_uri("://noscheme"));
+        assert!(!is_valid_uri(":empty"));
+        assert!(!is_valid_uri("123invalid:test")); // Must start with letter
+
+        // Windows paths should not be valid URIs on Windows
+        #[cfg(windows)]
+        {
+            assert!(!is_valid_uri("C:\\path\\to\\file"));
+            assert!(!is_valid_uri("D:/path/to/file"));
+        }
     }
 
     #[test]
