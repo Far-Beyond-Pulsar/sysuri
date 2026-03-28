@@ -98,15 +98,53 @@ fn main() {
 }
 ```
 
+## URI Format Support
+
+This crate supports both **hierarchical** and **non-hierarchical** URI formats:
+
+### Hierarchical URIs (with `://`)
+```
+myapp://path/to/resource
+http://example.com/page
+custom-app://action?param=value
+```
+
+### Non-Hierarchical URIs (without `://`)
+```
+tel:+1-816-555-1212
+mailto:user@example.com
+sms:+1234567890
+myapp:action
+```
+
+Both formats are fully supported for registration and handling!
+
 ## Platform-Specific Behavior
 
 ### Windows
 
 On Windows, sysuri registers URI schemes in `HKEY_CURRENT_USER\Software\Classes`, which doesn't require administrator privileges.
 
+**Windows 10+ Support:**
+Starting with version 0.4.0, sysuri automatically registers application capabilities so your application appears in Windows Settings under:
+- Settings → Apps → Default Apps → Choose default apps by protocol
+
+This registration includes:
+- ProgID creation for proper OS integration
+- Application capabilities registration
+- URL associations setup
+- Integration with the Windows default programs interface
+
+**Important Notes for Windows:**
+- The basic registry entries are sufficient for URI handling to work
+- For your app to appear in the Windows default apps UI, the enhanced registration (included in v0.4.0+) is required
+- For production applications, consider embedding version info and icons using `winres` in a build script
+- See the [Windows registration blog post](https://jorgen.tjer.no/post/2021/03/13/registering-a-rust-program-as-a-browser-on-windows/) for additional details on creating a complete Windows application
+
 **Testing:**
 ```cmd
 start myapp://test/path
+start tel:+1234567890
 ```
 
 ### macOS
@@ -151,6 +189,34 @@ cargo run --example callback_handler
 ```
 
 Demonstrates the callback-based URI handling system with URI parsing.
+
+### Single Instance Application
+```bash
+# Register the URI scheme
+cargo run --example single_instance -- --register
+
+# Start the server (keeps running)
+cargo run --example single_instance
+
+# In another terminal, trigger a URI (it will be sent to the running instance)
+# Windows: start myapp://test
+# macOS:   open myapp://test
+# Linux:   xdg-open myapp://test
+
+# Stop the server
+cargo run --example single_instance -- --stop
+```
+
+Demonstrates how to implement a single-instance application that:
+- Keeps running and listens for URI activations
+- Handles multiple URI activations without spawning new processes
+- Uses simple file-based IPC for cross-platform compatibility
+- Supports both hierarchical (`myapp://path`) and non-hierarchical (`myapp:action`) URIs
+
+This pattern is useful for applications that need to:
+- Maintain state between URI activations
+- Avoid multiple instances running simultaneously
+- Process URIs in a persistent service or daemon
 
 ## API Overview
 
@@ -258,12 +324,55 @@ cargo test
 
 Note: Some platform-specific tests may require appropriate permissions and can modify system settings. They use unique scheme names to avoid conflicts.
 
+## Best Practices for Production Applications
+
+### Windows Applications
+
+For production Windows applications, consider these additional steps:
+
+1. **Embed Application Resources** (recommended for professional apps):
+   ```toml
+   [build-dependencies]
+   winres = "0.1"
+   ```
+
+   Create a `build.rs`:
+   ```rust
+   #[cfg(windows)]
+   fn main() {
+       let mut res = winres::WindowsResource::new();
+       res.set_icon("app.ico")
+          .set("ProductName", "My Application")
+          .set("FileDescription", "My Application Description")
+          .set("CompanyName", "Your Company");
+       res.compile().unwrap();
+   }
+
+   #[cfg(not(windows))]
+   fn main() {}
+   ```
+
+2. **Use Proper Icons**: Provide `.ico` files for Windows and set them using `UriScheme::with_icon()`
+
+3. **Test in Default Apps UI**: After registration, check Windows Settings → Default Apps to verify your app appears
+
+For more details, see this excellent guide: [Registering a Rust Program as a Browser on Windows](https://jorgen.tjer.no/post/2021/03/13/registering-a-rust-program-as-a-browser-on-windows/)
+
+### Single-Instance Applications
+
+If your application needs to handle multiple URI activations without creating new processes:
+- Use the `single_instance` example as a starting point
+- Consider using dedicated IPC libraries like `interprocess` for robust communication
+- Implement proper signal handling for graceful shutdown
+- Use platform-specific single-instance mechanisms (e.g., mutexes on Windows, lock files on Unix)
+
 ## Security Considerations
 
 - URI schemes are registered per-user (not system-wide) on all platforms
 - The crate validates URI scheme names according to RFC 3986
 - Executable paths are verified to exist before registration
 - No elevation/admin privileges required
+- Always validate and sanitize URI content in your handlers to prevent injection attacks
 
 ## Contributing
 
@@ -279,6 +388,35 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Built with safety and usability in mind
 
 ## Changelog
+
+### Version 0.4.1 (Current)
+
+**New Features:**
+- ✨ **Non-hierarchical URI support**: Now supports URIs without `://` such as `tel:+1-816-555-1212`, `mailto:user@example.com`, `sms:+number`
+- 🪟 **Windows 10+ default apps integration**: Applications now appear in Windows Settings → Default Apps by protocol
+- 🔄 **Single-instance example**: New example showing how to handle multiple URI activations in one running instance
+- 📚 **Enhanced documentation**: Comprehensive guide for Windows registration and URI format support
+
+**Improvements:**
+- Windows: Added application capabilities registration (ProgID, URL associations, RegisteredApplications)
+- Windows: Enhanced unregister to clean up all related registry entries
+- URI parsing now correctly handles both hierarchical and non-hierarchical formats
+- Added automatic Windows path detection to avoid false positives (e.g., `C:\path`)
+- Expanded test coverage for new URI formats
+
+**Bug Fixes:**
+- Fixed URI scheme extraction to support non-hierarchical URIs
+- Fixed command-line argument parsing to recognize all valid URI formats
+
+### Version 0.3.0
+
+- Fixed incorrect platform cfg attributes in platform modules
+- Improved platform-specific imports
+
+### Version 0.2.0
+
+- Removed platform stubs
+- Enhanced platform module organization
 
 ### Version 0.1.0 (Initial Release)
 
